@@ -2,25 +2,25 @@
 
 A reproducible machine-learning research project for analyzing Colombo Stock Exchange (CSE) securities and estimating their **future returns over 1, 7, and 30 trading sessions** from daily price, volume, momentum, and trend signals.
 
-> **Project status:** research/portfolio project — not a live trading system and not financial advice.
+> **Project status:** research/portfolio project. Not a live trading system and not financial advice.
 
 ## What problem does this solve?
 
 **Sri Lankan equity analysis is manual and time-constrained.** The CSE lists roughly 300 companies across the ASPI and S&P SL20, and an investor or analyst following it faces three recurring friction points:
 
-1. **Screening burden.** Reviewing hundreds of tickers by hand — checking charts, volume, momentum — before a market open takes hours, so most coverage collapses to a handful of familiar large caps.
+1. **Screening burden.** Reviewing hundreds of tickers by hand (checking charts, volume, momentum) before a market open takes hours, so most coverage collapses to a handful of familiar large caps.
 2. **Inconsistent process.** Judgement-based reading of RSI, moving averages, and volume spikes varies day to day and person to person; nothing is standardized or auditable.
 3. **No local tooling.** Global screener platforms cover CSE thinly, and dedicated local analytics are scarce or closed.
 
 **What this project provides instead:**
 
-- **A daily screening shortlist, in seconds.** One command scores every ticker the same way, ranking them by expected return — e.g. "of these 3 banks, HNB looks strongest (+0.25%), COMB next (+0.12%), JKH flat (−0.03%)" — so attention goes to the shortlist instead of the whole board.
+- **A daily screening shortlist, in seconds.** One command scores every ticker the same way and ranks them by expected return. For example, of three banks it might say: HNB looks strongest (+0.25%), COMB next (+0.12%), JKH flat (−0.03%). Attention goes to the shortlist instead of the whole board.
 - **Standardized, auditable analysis.** Every ticker passes through the identical pipeline: symbol normalization → data validation → the same 11 features → the same model. Same inputs always produce the same score, and every result can be traced back through committed code and per-model metadata.
-- **Time-horizon choice.** Separate 1-, 7-, and 30-session models match different decisions: a day trader wants tomorrow's expected move, a swing trader the coming week, a position trader the coming month — from one CLI.
-- **Coverage of the whole board, not just big names.** The model is **cross-sectional**: it uses no company ID, only pattern-of-price-and-volume inputs, so it scores any CSE stock with sufficient history — including smaller tickers it never trained on.
-- **Honest evaluation by default.** Every model is benchmarked against a zero-return baseline with a chronological, embargoed split — so the project itself tells you how much (or little) signal there is, rather than hiding it.
+- **Time-horizon choice.** Separate 1-, 7-, and 30-session models match different decisions: a day trader wants tomorrow's expected move, a swing trader the coming week, a position trader the coming month. All from one CLI.
+- **Coverage of the whole board, not just big names.** The model is **cross-sectional**: it uses no company ID, only pattern-of-price-and-volume inputs, so it scores any CSE stock with sufficient history, including smaller tickers it never trained on.
+- **Honest evaluation by default.** Every model is benchmarked against a zero-return baseline with a chronological, embargoed split, so the project itself tells you how much (or little) signal there is rather than hiding it.
 
-In short: **it turns a manual, judgement-driven review into a reproducible, ranked, multi-horizon screen for the whole CSE — and is upfront that it is a research tool, not a trading signal.**
+In short: **it turns a manual, judgement-driven review into a reproducible, ranked, multi-horizon screen for the whole CSE, and is upfront that it is a research tool, not a trading signal.**
 
 ### How it works, end to end
 
@@ -43,7 +43,7 @@ See [methodology](docs/methodology.md) for the full technical detail.
 - MAE, MSE, R², directional accuracy, and zero-return baseline
 - Model metadata saved beside each trained artifact
 - Fetch, train, and predict CLI
-- Offline unit tests—CI does not depend on Yahoo Finance availability
+- Offline unit tests, so CI does not depend on Yahoo Finance availability
 
 ## Architecture
 
@@ -157,7 +157,7 @@ Short symbols such as `JKH` are normalized to `JKH.N0000`. Existing files are re
 ### 2. Train and evaluate
 
 Train on locally available data in `data/raw/` (CSVs are not committed to
-the repository — see [dataset](#dataset) below). Default horizon is 1 day:
+the repository; see [dataset](#dataset) below). Default horizon is 1 day:
 
 ```bash
 cse-analyzer train
@@ -170,7 +170,7 @@ cse-analyzer train --horizon 7
 cse-analyzer train --horizon 30
 ```
 
-Any positive horizon works — each gets its own model and metadata file.
+Any positive horizon works, and each gets its own model and metadata file.
 
 For reproducible historical experiments, specify an inclusive data cutoff:
 
@@ -188,7 +188,7 @@ Outputs (per horizon `h`):
 - `models/cse_next_day_regressor_h7.json` + `.metadata_h7.json`
 - `models/cse_next_day_regressor_h30.json` + `.metadata_h30.json`
 
-The metadata contains the horizon, target definition, feature names, included assets, row counts, model parameters, timestamp, cutoff, and evaluation results. Do not copy sample metrics into a portfolio claim—run the command and report the generated results.
+The metadata contains the horizon, target definition, feature names, included assets, row counts, model parameters, timestamp, cutoff, and evaluation results. Do not copy sample metrics into a portfolio claim; run the command and report the generated results.
 
 ### 3. Predict
 
@@ -224,7 +224,7 @@ only; it is not a current forecast.
 
 ### Dataset
 
-Price history is **not included** in the repository — CSVs are ignored by
+Price history is **not included** in the repository; CSVs are ignored by
 Git (see `.gitignore`). Download the 54-symbol universe before your first
 training run:
 
@@ -233,7 +233,7 @@ cse-analyzer fetch --period 5y
 ```
 
 `SOFT.N0000` has no Yahoo Finance history, so in practice this yields ~53
-csv files (2021-08 onward, ~4 MB). Yahoo's CSE coverage is uneven — some
+csv files (2021-08 onward, ~4 MB). Yahoo's CSE coverage is uneven, so some
 symbols may be missing or short; the fetcher skips and reports them rather
 than failing. See [data/README.md](data/README.md) for dataset properties
 and attribution.
@@ -265,7 +265,7 @@ Read [Data and limitations](docs/data-and-limitations.md) before interpreting re
 - Results can vary materially by cutoff, universe, corporate actions, and data quality.
 - The current pipeline does not include fundamentals, disclosures, macroeconomics, news, transaction costs, liquidity, slippage, taxes, or portfolio risk constraints.
 - A chronological holdout is useful but is not a complete walk-forward backtest.
-- Predicted returns are research outputs—not buy, sell, or hold recommendations.
+- Predicted returns are research outputs, not buy, sell, or hold recommendations.
 - Historical performance does not guarantee future performance.
 
 ## Roadmap
