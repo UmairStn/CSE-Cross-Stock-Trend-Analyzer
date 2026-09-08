@@ -30,7 +30,9 @@ def _parse_horizon(value: str) -> int:
     try:
         horizon = int(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError("horizon must be a whole number of trading sessions") from error
+        raise argparse.ArgumentTypeError(
+            "horizon must be a whole number of trading sessions"
+        ) from error
     if horizon < 1:
         raise argparse.ArgumentTypeError("horizon must be at least 1")
     return horizon
@@ -79,7 +81,10 @@ def predict_command(args: argparse.Namespace) -> int:
     for raw_symbol in args.symbols:
         symbol = normalize_symbol(raw_symbol)
         path = _data_path(args.data_dir, symbol)
-        frame = load_history(path) if path.exists() else fetch_history(symbol, args.period).reset_index()
+        if path.exists():
+            frame = load_history(path)
+        else:
+            frame = fetch_history(symbol, args.period).reset_index()
         records.append(predict_latest(model, frame, symbol, args.horizon))
     print(json.dumps(records, indent=2))
     return 0
@@ -110,11 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
     predict_parser = commands.add_parser("predict", help="predict returns over a horizon")
     predict_parser.add_argument("symbols", nargs="+", help="e.g. JKH.N0000 HNB.N0000")
     predict_parser.add_argument("--horizon", type=_parse_horizon, default=1,
-                                help="horizon in trading sessions; loads the matching trained model")
+                                help="horizon in trading sessions; loads the matching model")
     predict_parser.add_argument("--period", default=DEFAULT_PERIOD)
     predict_parser.add_argument("--data-dir", type=Path, default=DATA_DIR)
     predict_parser.add_argument("--model", type=Path, default=None,
-                                help="model path override (default: per-horizon path under models/)")
+                                help="model path (default: per-horizon path under models/)")
     predict_parser.set_defaults(handler=predict_command)
     return parser
 
