@@ -110,7 +110,7 @@ Price-derived indicators are normalized by closing price, and no asset identifie
 ### Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/cse-stock-analyzer.git
+git clone https://github.com/UmairStn/cse-stock-analyzer.git
 cd cse-stock-analyzer
 python -m venv .venv
 ```
