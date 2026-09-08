@@ -1,27 +1,44 @@
 # CSE Stock Analyzer
 
-A reproducible machine-learning research project for analyzing Colombo Stock Exchange (CSE) securities and estimating their **next trading session return** from daily price, volume, momentum, and trend signals.
+A reproducible machine-learning research project for analyzing Colombo Stock Exchange (CSE) securities and estimating their **future returns over 1, 7, and 30 trading sessions** from daily price, volume, momentum, and trend signals.
 
 > **Project status:** research/portfolio project — not a live trading system and not financial advice.
 
-## Why this project?
+## What problem does this solve?
 
-Public tooling and consistently available market data are more limited for Sri Lankan equities than for larger exchanges. This project demonstrates an end-to-end workflow tailored to CSE symbols:
+**Sri Lankan equity analysis is manual and time-constrained.** The CSE lists roughly 300 companies across the ASPI and S&P SL20, and an investor or analyst following it faces three recurring friction points:
+
+1. **Screening burden.** Reviewing hundreds of tickers by hand — checking charts, volume, momentum — before a market open takes hours, so most coverage collapses to a handful of familiar large caps.
+2. **Inconsistent process.** Judgement-based reading of RSI, moving averages, and volume spikes varies day to day and person to person; nothing is standardized or auditable.
+3. **No local tooling.** Global screener platforms cover CSE thinly, and dedicated local analytics are scarce or closed.
+
+**What this project provides instead:**
+
+- **A daily screening shortlist, in seconds.** One command scores every ticker the same way, ranking them by expected return — e.g. "of these 3 banks, HNB looks strongest (+0.25%), COMB next (+0.12%), JKH flat (−0.03%)" — so attention goes to the shortlist instead of the whole board.
+- **Standardized, auditable analysis.** Every ticker passes through the identical pipeline: symbol normalization → data validation → the same 11 features → the same model. Same inputs always produce the same score, and every result can be traced back through committed code and per-model metadata.
+- **Time-horizon choice.** Separate 1-, 7-, and 30-session models match different decisions: a day trader wants tomorrow's expected move, a swing trader the coming week, a position trader the coming month — from one CLI.
+- **Coverage of the whole board, not just big names.** The model is **cross-sectional**: it uses no company ID, only pattern-of-price-and-volume inputs, so it scores any CSE stock with sufficient history — including smaller tickers it never trained on.
+- **Honest evaluation by default.** Every model is benchmarked against a zero-return baseline with a chronological, embargoed split — so the project itself tells you how much (or little) signal there is, rather than hiding it.
+
+In short: **it turns a manual, judgement-driven review into a reproducible, ranked, multi-horizon screen for the whole CSE — and is upfront that it is a research tool, not a trading signal.**
+
+### How it works, end to end
 
 1. Normalize CSE ticker symbols.
 2. Download daily OHLCV history from Yahoo Finance.
 3. Remove non-trading/forward-filled observations.
 4. Generate scale-independent technical features.
-5. Train one cross-sectional XGBoost regression model across many companies.
-6. Evaluate it chronologically and predict the next-session percentage return.
+5. Train one cross-sectional XGBoost regression model per horizon (1/7/30 sessions) across many companies.
+6. Evaluate each chronologically against a baseline, and predict expected returns.
 
-The model is **cross-sectional**: it does not use a company ID. It learns patterns shared across securities, which allows it to process a CSE ticker outside the training universe when sufficient history is available.
+See [methodology](docs/methodology.md) for the full technical detail.
 
 ## Highlights
 
 - 54-symbol, sector-diverse CSE training universe
+- Multi-horizon prediction: 1, 7, and 30 trading sessions (one model per horizon)
 - Shared feature pipeline for training and inference
-- Per-security chronological train/test split to reduce future leakage
+- Per-security chronological train/test split with label embargo to reduce future leakage
 - Filtering around implausibly large split/scrip-related price jumps
 - MAE, MSE, R², directional accuracy, and zero-return baseline
 - Model metadata saved beside each trained artifact
@@ -35,23 +52,25 @@ flowchart LR
     A[CSE symbols] --> B[Yahoo Finance OHLCV]
     B --> C[Validation and non-trading-row removal]
     C --> D[Technical feature engineering]
-    D --> E[Per-stock chronological split]
-    E --> F[XGBoost regressor]
+    D --> E[Per-stock chronological split + embargo]
+    E --> F[XGBoost regressor, one per horizon]
     F --> G[Evaluation + model metadata]
-    F --> H[Next-session return prediction]
+    F --> H[Multi-horizon return prediction]
 ```
 
 ## Model methodology
 
 ### Target
 
-The continuous target is the next observed trading session's close-to-close return:
+The continuous target is the **cumulative close-to-close return over the next `h` trading sessions** (`h` = 1, 7, or 30):
 
 ```text
-Target_Return(t) = Close(t + 1) / Close(t) - 1
+Target_Return(t, h) = Close(t + h) / Close(t) - 1
 ```
 
-This is a **regression** task, not a price-level forecast or classifier. `UP`/`DOWN` is derived from the sign of the predicted return for presentation.
+One XGBoost model is trained per horizon. This is a **regression** task, not a price-level forecast or classifier. `UP`/`DOWN` is derived from the sign of the predicted return for presentation.
+
+The same 11 features feed every horizon; only the label window changes. Longer horizons are harder: daily-noise features lose meaning as the window grows, and overlapping label windows make test metrics optimistic (see [methodology](docs/methodology.md)).
 
 ### Features
 
@@ -138,11 +157,20 @@ Short symbols such as `JKH` are normalized to `JKH.N0000`. Existing files are re
 ### 2. Train and evaluate
 
 Train on locally available data in `data/raw/` (CSVs are not committed to
-the repository — see [dataset](#dataset) below):
+the repository — see [dataset](#dataset) below). Default horizon is 1 day:
 
 ```bash
 cse-analyzer train
 ```
+
+Train the weekly and monthly models too:
+
+```bash
+cse-analyzer train --horizon 7
+cse-analyzer train --horizon 30
+```
+
+Any positive horizon works — each gets its own model and metadata file.
 
 For reproducible historical experiments, specify an inclusive data cutoff:
 
@@ -154,19 +182,25 @@ The default cutoff is 2026-01-31 because Yahoo's CSE feed forward-fills ghost
 rows after that date (see [data considerations](#data-considerations)); pass
 `--train-end none` to disable it once the feed is live again.
 
-Outputs:
+Outputs (per horizon `h`):
 
-- `models/cse_next_day_regressor.json`
-- `models/cse_next_day_regressor.metadata.json`
+- `models/cse_next_day_regressor.json` + `.metadata.json` (h = 1, the default)
+- `models/cse_next_day_regressor_h7.json` + `.metadata_h7.json`
+- `models/cse_next_day_regressor_h30.json` + `.metadata_h30.json`
 
-The metadata contains feature names, included assets, row counts, model parameters, timestamp, cutoff, and evaluation results. Do not copy sample metrics into a portfolio claim—run the command and report the generated results.
+The metadata contains the horizon, target definition, feature names, included assets, row counts, model parameters, timestamp, cutoff, and evaluation results. Do not copy sample metrics into a portfolio claim—run the command and report the generated results.
 
 ### 3. Predict
 
-Use locally downloaded data where available, otherwise fetch recent history:
+Use locally downloaded data where available, otherwise fetch recent history.
+Default horizon is 1 day; add `--horizon` for the weekly/monthly models:
 
 ```bash
 cse-analyzer predict JKH.N0000 HNB.N0000
+```
+
+```bash
+cse-analyzer predict JKH.N0000 HNB.N0000 --horizon 7
 ```
 
 Example output shape:
@@ -176,14 +210,17 @@ Example output shape:
   {
     "symbol": "JKH.N0000",
     "observation_date": "2025-12-31",
-    "predicted_next_day_return": 0.0021,
-    "predicted_next_day_percent": 0.21,
+    "horizon_days": 7,
+    "predicted_return": 0.0066,
+    "predicted_percent": 0.66,
     "direction": "UP"
   }
 ]
 ```
 
-This example illustrates the schema only; it is not a current forecast.
+`predicted_percent` is the cumulative close-to-close return expected over the
+next `horizon_days` trading sessions. This example illustrates the schema
+only; it is not a current forecast.
 
 ### Dataset
 

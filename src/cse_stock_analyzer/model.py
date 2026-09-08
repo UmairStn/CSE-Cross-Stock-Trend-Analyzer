@@ -1,4 +1,4 @@
-"""Training, persistence, and inference for the cross-sectional regressor."""
+"""Training, persistence, and inference for the cross-sectional return regressor."""
 
 from __future__ import annotations
 
@@ -18,20 +18,42 @@ MAX_ABS_DAILY_RETURN = 0.40
 TRAIN_SPLIT = 0.80
 
 
-def prepare_training_frame(frame: pd.DataFrame, train_end: str | None = None) -> pd.DataFrame:
-    """Create features and next-session targets with contaminated jumps removed."""
+def _target_poisoned(current_return: pd.Series, horizon: int) -> pd.Series:
+    """True for rows whose target window (t+1..t+h) contains a split-sized jump.
+
+    For horizon 1 this is the original neighbour rule (a jump at row i poisons
+    the label at row i-1). For longer horizons the window widens: any daily
+    return above the threshold inside the window makes the cumulative label
+    untrustworthy.
+    """
+    bad = current_return.abs() > MAX_ABS_DAILY_RETURN
+    if horizon <= 1:
+        return bad.shift(-1, fill_value=False)
+    window = bad.iloc[::-1].rolling(horizon, min_periods=1).max().iloc[::-1]
+    return window.shift(-1).fillna(False).astype(bool)
+
+
+def prepare_training_frame(
+    frame: pd.DataFrame, train_end: str | None = None, horizon: int = 1
+) -> pd.DataFrame:
+    """Create features and cumulative-horizon targets with contaminated jumps removed."""
+    if horizon < 1:
+        raise ValueError("horizon must be a positive number of trading sessions")
     data = frame.copy()
     if train_end:
         if "Date" not in data:
             raise ValueError("Training data must include a Date column")
         data = data[pd.to_datetime(data["Date"]) <= pd.Timestamp(train_end)].copy()
     data = prepare_features(data)
-    data["Target_Return"] = data["Current_Return"].shift(-1)
+
+    # Cumulative close-to-close return over the next `horizon` trading rows.
+    close = pd.to_numeric(data["Close"], errors="coerce")
+    data["Target_Return"] = close.shift(-horizon) / close - 1
 
     contaminated = data["Current_Return"].abs() > MAX_ABS_DAILY_RETURN
     for lag in ("Return_Lag1", "Return_Lag2"):
         contaminated |= data[lag].abs() > MAX_ABS_DAILY_RETURN
-    contaminated |= contaminated.shift(-1, fill_value=False)
+    contaminated |= _target_poisoned(data["Current_Return"], horizon)
     data = data.loc[~contaminated]
     return data.dropna(subset=FEATURE_COLUMNS + ["Target_Return"])
 
@@ -41,18 +63,24 @@ def train(
     model_path: Path,
     metadata_path: Path,
     train_end: str | None = None,
+    horizon: int = 1,
 ) -> dict[str, Any]:
-    """Train using an independent chronological split for each security."""
+    """Train one horizon-specific model using per-security chronological splits."""
+    if horizon < 1:
+        raise ValueError("horizon must be a positive number of trading sessions")
     train_frames: list[pd.DataFrame] = []
     test_frames: list[pd.DataFrame] = []
     symbols: list[str] = []
 
     for path in sorted(csv_paths):
-        frame = prepare_training_frame(load_history(path), train_end)
+        frame = prepare_training_frame(load_history(path), train_end, horizon)
         if len(frame) < 50:
             continue
         split = int(len(frame) * TRAIN_SPLIT)
-        train_frames.append(frame.iloc[:split])
+        # Embargo: the last `horizon` training rows have targets whose windows
+        # reach into the test period, so no test-period close is ever seen in
+        # training. Without this, overlapping windows leak across the split.
+        train_frames.append(frame.iloc[: max(0, split - horizon)])
         test_frames.append(frame.iloc[split:])
         symbols.append(path.stem)
 
@@ -77,7 +105,12 @@ def train(
         "zero_return_baseline_mae": float(actual.abs().mean()),
     }
     metadata: dict[str, Any] = {
-        "model_type": "XGBoost next-day return regressor",
+        "model_type": "XGBoost cumulative return regressor",
+        "horizon_days": horizon,
+        "target_definition": (
+            f"Close(t + {horizon}) / Close(t) - 1 over the next {horizon} "
+            "trading session(s)"
+        ),
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "train_end": train_end,
         "features": FEATURE_COLUMNS,
@@ -104,7 +137,10 @@ def load_model(model_path: Path) -> xgb.XGBRegressor:
     return model
 
 
-def predict_latest(model: xgb.XGBRegressor, frame: pd.DataFrame, symbol: str) -> dict[str, Any]:
+def predict_latest(
+    model: xgb.XGBRegressor, frame: pd.DataFrame, symbol: str, horizon: int = 1
+) -> dict[str, Any]:
+    """Predict the cumulative return over the next `horizon` trading sessions."""
     featured = prepare_features(frame).dropna(subset=FEATURE_COLUMNS)
     if featured.empty:
         raise ValueError(f"Not enough usable history to calculate features for {symbol}")
@@ -114,7 +150,8 @@ def predict_latest(model: xgb.XGBRegressor, frame: pd.DataFrame, symbol: str) ->
     return {
         "symbol": symbol,
         "observation_date": pd.Timestamp(date).date().isoformat(),
-        "predicted_next_day_return": predicted_return,
-        "predicted_next_day_percent": predicted_return * 100,
+        "horizon_days": horizon,
+        "predicted_return": predicted_return,
+        "predicted_percent": predicted_return * 100,
         "direction": "UP" if predicted_return >= 0 else "DOWN",
     }

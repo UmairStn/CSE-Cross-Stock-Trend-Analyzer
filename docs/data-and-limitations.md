@@ -40,4 +40,4 @@ Use a global-date walk-forward design and cost-aware simulation before consideri
 
 ## Interpretation
 
-The output is an estimated next-session return. It is not a fair-value estimate, guaranteed movement, confidence score, or recommendation. A positive prediction may be economically insignificant after costs, even when its sign is correct.
+The output is an estimated cumulative return over the requested horizon (1, 7, or 30 trading sessions). It is not a fair-value estimate, guaranteed movement, confidence score, or recommendation. A positive prediction may be economically insignificant after costs, even when its sign is correct. Longer horizons inherit every short-horizon caveat plus overlapping-label optimism in their metrics (see [methodology](methodology.md)).
