@@ -1,0 +1,52 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Project data (regenerate with `cse-analyzer fetch`) ---
+data/raw/*.csv
+data/processed/
+
+# --- Generated model artifacts (regenerate with `cse-analyzer train`) ---
+models/*.json
+!models/README.md
+
+# --- Generated reports / plots / logs ---
+reports/generated/
+*.png
+*.log
+
+# --- Agent / planning workspace (not part of the portfolio) ---
+.pi/
+plan/
